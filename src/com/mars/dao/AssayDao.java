@@ -1,20 +1,19 @@
 package com.mars.dao;
 
-import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 import org.apache.log4j.Logger;
 
+import com.mars.dao.util.CollectionUtils;
+import com.mars.dao.util.CompoundProfileWriter;
+import com.mars.dao.util.ConnectionUtil;
+import com.mars.dao.util.StringUtils;
 import com.mars.dao.vo.CompoundProfile;
 import com.mars.dao.vo.InventoryView;
 
@@ -54,7 +53,7 @@ public class AssayDao {
 			ct = connectionUtil.createConnection();
 			st = ct.createStatement();
 
-			String query = "select qi.id as ID, qi.outline_queue_id as outline_queue_id, qi.state_id, "
+			String query = "select qi.id as ID, qi.lot_number as LOT_NUMBER, qi.outline_queue_id as outline_queue_id, qi.state_id, "
 					+ "qit.Transfer_status, o.CONCENTRATION as CONCENTRATION, "
 					+ " o.CONC_UNIT as CONC_UNIT, o.LOCATION as LOCATION, "
 					+ " o.VOLUME as VOLUME from mars.queue_items qi, "
@@ -73,21 +72,23 @@ public class AssayDao {
 
 			while (rs.next()) {
 				CompoundProfile compoundProfile = new CompoundProfile();
-				compoundProfile.setoutline_queue_id(rs
+				compoundProfile.setOutlineQueueId(rs
 						.getString("outline_queue_id"));
 				compoundProfile.setConcentration(rs.getString("CONCENTRATION"));
 				compoundProfile.setConcentrationUnit(rs.getString("CONC_UNIT"));
 				compoundProfile.setId(rs.getString("Id"));
 				compoundProfile.setLocation(rs.getString("LOCATION"));
 				compoundProfile.setVolume(rs.getString("VOLUME"));
-
+				compoundProfile.setLotNumber(rs.getString("LOT_NUMBER"));
 				compoundProfiles.add(compoundProfile);
 
 			}
 
 			LOG.info("CompoundProfile Size:" + compoundProfiles.size());
-			for (CompoundProfile compoundProfile : compoundProfiles) {
-				LOG.info("CompoundProfile :" + compoundProfile);
+			if (LOG.isDebugEnabled()) {
+				for (CompoundProfile compoundProfile : compoundProfiles) {
+					LOG.debug("CompoundProfile :" + compoundProfile);
+				}
 			}
 
 		} catch (ClassNotFoundException e) {
@@ -114,7 +115,7 @@ public class AssayDao {
 	 * @return
 	 * @throws SQLException
 	 */
-	public boolean checkAliquotSiteForLiquid(CompoundProfile compoundProfile)
+	private boolean checkAliquotSiteForLiquid(CompoundProfile compoundProfile)
 			throws SQLException {
 		List<InventoryView> inventoryViews = null;
 		Connection ct = null;
@@ -123,10 +124,10 @@ public class AssayDao {
 		try {
 			ct = connectionUtil.createConnection();
 			st = ct.createStatement();
-			String query = "select ROOT_NUMBER, ALIQUOT_SITE from mars.LIBRA_ALIQUOT_ON_HAND where ROOT_NUMBER='"
-					+ compoundProfile.getoutline_queue_id() + "'";
-
-			LOG.info("Inventory view Query-" + query);
+			String query = "select ROOT_NUMBER, ALIQUOT_SITE from mars.LIBRA_ALIQUOT_ON_HAND where LOT_NUMBER='"
+					+ compoundProfile.getLotNumber() + "'";
+			if (LOG.isDebugEnabled())
+				LOG.debug("Inventory view Query-" + query);
 			rs = st.executeQuery(query);
 
 			inventoryViews = new ArrayList<InventoryView>();
@@ -154,15 +155,15 @@ public class AssayDao {
 				ct.close();
 		}
 
-		if (isEmpty(inventoryViews)) {
+		if (CollectionUtils.isEmpty(inventoryViews)) {
 			return false;
 		}
 
 		for (InventoryView inventory : inventoryViews) {
-			if (compoundProfile.getoutline_queue_id().equalsIgnoreCase(
+			if (compoundProfile.getOutlineQueueId().equalsIgnoreCase(
 					inventory.getRootNumber())) {
-				if (hasText(compoundProfile.getLocation())
-						&& hasText(inventory.getAliquotSite())
+				if (StringUtils.hasText(compoundProfile.getLocation())
+						&& StringUtils.hasText(inventory.getAliquotSite())
 						&& compoundProfile.getLocation().equalsIgnoreCase(
 								inventory.getAliquotSite())) {
 					return true;
@@ -181,7 +182,7 @@ public class AssayDao {
 	 * @return
 	 * @throws SQLException
 	 */
-	public boolean checkAliquotSiteForPowder(CompoundProfile compoundProfile)
+	private boolean checkAliquotSiteForPowder(CompoundProfile compoundProfile)
 			throws SQLException {
 		List<InventoryView> inventoryViews = null;
 		Connection ct = null;
@@ -190,8 +191,8 @@ public class AssayDao {
 		try {
 			ct = connectionUtil.createConnection();
 			st = ct.createStatement();
-			rs = st.executeQuery("select ROOT_NUMBER, ALIQUOT_SITE from mars.LIBRA_INVENTORY_AMOUNT_ON_HAND where Root_number='"
-					+ compoundProfile.getoutline_queue_id() + "'");
+			rs = st.executeQuery("select ROOT_NUMBER, ALIQUOT_SITE from mars.LIBRA_INVENTORY_AMOUNT_ON_HAND where lot_number='"
+					+ compoundProfile.getLotNumber() + "'");
 
 			inventoryViews = new ArrayList<InventoryView>();
 			while (rs.next()) {
@@ -218,15 +219,15 @@ public class AssayDao {
 				ct.close();
 		}
 
-		if (isEmpty(inventoryViews)) {
+		if (CollectionUtils.isEmpty(inventoryViews)) {
 			return false;
 		}
 
 		for (InventoryView inventory : inventoryViews) {
-			if (compoundProfile.getoutline_queue_id().equalsIgnoreCase(
+			if (compoundProfile.getOutlineQueueId().equalsIgnoreCase(
 					inventory.getRootNumber())) {
-				if (hasText(compoundProfile.getLocation())
-						&& hasText(inventory.getAliquotSite())
+				if (StringUtils.hasText(compoundProfile.getLocation())
+						&& StringUtils.hasText(inventory.getAliquotSite())
 						&& compoundProfile.getLocation().equalsIgnoreCase(
 								inventory.getAliquotSite())) {
 					return true;
@@ -249,109 +250,56 @@ public class AssayDao {
 		LOG.info("Start checkAliquotSite");
 		long startTime = System.currentTimeMillis();
 		List<CompoundProfile> compoundProfiles = getCompoundProfile();
-		if (!isEmpty(compoundProfiles)) {
+		if (!CollectionUtils.isEmpty(compoundProfiles)) {
+			List<CompoundProfile> liquidStack = new ArrayList<CompoundProfile>();
+			List<CompoundProfile> powderStack = new ArrayList<CompoundProfile>();
+
 			for (CompoundProfile compoundProfile : compoundProfiles) {
 				if (compoundProfile != null) {
-					if (hasText(compoundProfile.getVolume())
-							&& hasText(compoundProfile.getConcentration())
-							&& hasText(compoundProfile.getConcentrationUnit())) {
-						LOG.info("Checking liquid" + compoundProfile);
+					if (StringUtils.hasText(compoundProfile.getVolume())
+							&& StringUtils.hasText(compoundProfile
+									.getConcentration())
+							&& StringUtils.hasText(compoundProfile
+									.getConcentrationUnit())) {
+						if (LOG.isDebugEnabled())
+							LOG.debug("Checking liquid" + compoundProfile);
 						// Liquid
-						boolean exists = checkAliquotSiteForLiquid(compoundProfile);
+						boolean exists = false;
+						if (StringUtils.hasText(compoundProfile.getLotNumber()))
+							exists = checkAliquotSiteForLiquid(compoundProfile);
+
 						if (!exists) {
 							// Write to file
-							writeToFile(compoundProfile, false);
+							// CompoundProfileWriter.writeToFile(compoundProfile,
+							// false);
+							liquidStack.add(compoundProfile);
 						}
 
-					} else if (hasText(compoundProfile.getVolume())) {
-						System.out
-								.println("Checking powder " + compoundProfile);
+					} else if (StringUtils.hasText(compoundProfile.getVolume())) {
+						if (LOG.isDebugEnabled())
+							LOG.debug("Checking powder " + compoundProfile);
 						// Powder
-						boolean exists = checkAliquotSiteForPowder(compoundProfile);
+						boolean exists = false;
+						if (StringUtils.hasText(compoundProfile.getLotNumber()))
+							exists = checkAliquotSiteForPowder(compoundProfile);
 
 						if (!exists) {
 							// Write to file
-							writeToFile(compoundProfile, true);
+							// CompoundProfileWriter.writeToFile(compoundProfile,
+							// true);
+							powderStack.add(compoundProfile);
 						}
 					}
 				}
 			}
+
+			CompoundProfileWriter.writeToFile(liquidStack, false);
+
+			CompoundProfileWriter.writeToFile(liquidStack, true);
 		}
 		long endTime = System.currentTimeMillis();
 		LOG.info("End checkAliquotSite .. Time Consumed - "
 				+ (endTime - startTime) / 1000 + "s");
-	}
-
-	/**
-	 * 
-	 * @param profile
-	 * @param isPowder
-	 */
-	private void writeToFile(CompoundProfile profile, boolean isPowder) {
-		try {
-			String fileName;
-
-			if (isPowder)
-				fileName = "PowderCompoundUnmatchedLocation.txt";
-			else
-				fileName = "LiquidCompoundUnmatchedLocation.txt";
-
-			LOG.info("File Name " + fileName);
-
-			String content = profile.toString();
-
-			LOG.info("Content  " + content);
-			File file = new File(fileName);
-
-			// if file doesnt exists, then create it
-			if (!file.exists()) {
-				file.createNewFile();
-			}
-
-			FileWriter fw = new FileWriter(file.getAbsoluteFile(), true);
-			BufferedWriter bw = new BufferedWriter(fw);
-			bw.write(content);
-			bw.write('\n');
-			bw.close();
-
-			LOG.info("Done");
-
-		} catch (IOException e) {
-			LOG.error("Error : ", e);
-		}
-	}
-	/**
-	 * 
-	 * @param str
-	 * @return
-	 */
-	public static boolean hasLength(CharSequence str) {
-		return (str != null && str.length() > 0);
-	}
-
-	/**
-	 * 
-	 * @param str
-	 * @return
-	 */
-	public static boolean hasText(CharSequence str) {
-		if (!hasLength(str)) {
-			return false;
-		}
-		int strLen = str.length();
-		for (int i = 0; i < strLen; i++) {
-			if (!Character.isWhitespace(str.charAt(i))) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * 
-	 */
-	public static boolean isEmpty(Collection<?> collection) {
-		return (collection == null || collection.isEmpty());
 	}
 
 	public static void main(String args[]) throws Exception {

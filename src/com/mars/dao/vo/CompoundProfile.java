@@ -13,18 +13,19 @@ public class CompoundProfile implements Serializable {
 
 	@Override
 	public String toString() {
-		return "CompoundProfile [compoundID=" + Id + ",outline_queue_id="
-				+ outline_queue_id + ", location=" + location
-				+ ", ConcentrationUnit=" + ConcentrationUnit + ", volume="
-				+ volume + ", concentration=" + concentration + "] ";
+		return "CompoundProfile [outline_queue_id=" + outlineQueueId
+				+ ", location=" + location + ", ConcentrationUnit="
+				+ ConcentrationUnit + ", volume=" + volume + ", concentration="
+				+ concentration + ", Id=" + Id + ", lotNumber=" + lotNumber
+				+ "]";
 	}
 
-	public String getoutline_queue_id() {
-		return outline_queue_id;
+	public String getOutlineQueueId() {
+		return outlineQueueId;
 	}
 
-	public void setoutline_queue_id(String outline_queue_id) {
-		this.outline_queue_id = outline_queue_id;
+	public void setOutlineQueueId(String outlineQueueId) {
+		this.outlineQueueId = outlineQueueId;
 	}
 	public String getId() {
 		return Id;
@@ -70,11 +71,19 @@ public class CompoundProfile implements Serializable {
 	 * 
 	 */
 	private static final long serialVersionUID = 1L;
-	private String outline_queue_id;
+	private String outlineQueueId;
 	private String location;
 	private String ConcentrationUnit;
 	private String volume;
 	private String concentration;
 	private String Id;
+	private String lotNumber;
+	public String getLotNumber() {
+		return lotNumber;
+	}
+
+	public void setLotNumber(String lotNumber) {
+		this.lotNumber = lotNumber;
+	}
 
 }
