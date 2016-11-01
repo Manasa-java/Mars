@@ -26,15 +26,8 @@ public class CompoundProfileWriter {
 	 * @param profile
 	 * @param isPowder
 	 */
-	public static void writeToFile(CompoundProfile profile, boolean isPowder) {
+	public static void writeToFile(CompoundProfile profile, String fileName) {
 		try {
-			String fileName;
-
-			if (isPowder)
-				fileName = "PowderCompoundUnmatchedLocation.txt";
-			else
-				fileName = "LiquidCompoundUnmatchedLocation.txt";
-
 			LOG.info("File Name " + fileName);
 
 			String content = profile.toString();
@@ -42,7 +35,7 @@ public class CompoundProfileWriter {
 			LOG.info("Content  " + content);
 			File file = new File(fileName);
 
-			// if file doesnt exists, then create it
+			// if file doesn't exists, then create it
 			if (!file.exists()) {
 				file.createNewFile();
 			}
@@ -66,15 +59,8 @@ public class CompoundProfileWriter {
 	 * @param isPowder
 	 */
 	public static void writeToFile(List<CompoundProfile> profiles,
-			boolean isPowder) {
+			String fileName) {
 		try {
-			String fileName;
-
-			if (isPowder)
-				fileName = "PowderCompoundUnmatchedLocation.txt";
-			else
-				fileName = "LiquidCompoundUnmatchedLocation.txt";
-
 			LOG.info("File Name " + fileName);
 
 			File file = new File(fileName);

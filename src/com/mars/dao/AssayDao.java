@@ -77,7 +77,18 @@ public class AssayDao {
 				compoundProfile.setConcentration(rs.getString("CONCENTRATION"));
 				compoundProfile.setConcentrationUnit(rs.getString("CONC_UNIT"));
 				compoundProfile.setId(rs.getString("Id"));
-				compoundProfile.setLocation(rs.getString("LOCATION"));
+
+				String location = rs.getString("LOCATION");
+
+				if (StringUtils.hasText(location)) {
+					if ("Lake County".equalsIgnoreCase(location))
+						location = "LC";
+					else if ("LUDWIGSHAFEN".equalsIgnoreCase(location))
+						location = "LU";
+					else if ("WORCESTER".equalsIgnoreCase(location))
+						location = "ABC";
+				}
+				compoundProfile.setLocation(location);
 				compoundProfile.setVolume(rs.getString("VOLUME"));
 				compoundProfile.setLotNumber(rs.getString("LOT_NUMBER"));
 				compoundProfiles.add(compoundProfile);
@@ -107,7 +118,6 @@ public class AssayDao {
 		}
 		return compoundProfiles;
 	}
-
 	/**
 	 * 
 	 * @param compoundProfile
@@ -138,7 +148,7 @@ public class AssayDao {
 				inventoryViews.add(inventoryView);
 			}
 
-			LOG.info("inventoryViews Liquid Size:" + inventoryViews.size());
+			LOG.debug("inventoryViews Liquid Size:" + inventoryViews.size());
 
 		} catch (ClassNotFoundException e) {
 			LOG.error("Error : ", e);
@@ -160,17 +170,21 @@ public class AssayDao {
 		}
 
 		for (InventoryView inventory : inventoryViews) {
-			if (compoundProfile.getOutlineQueueId().equalsIgnoreCase(
-					inventory.getRootNumber())) {
-				if (StringUtils.hasText(compoundProfile.getLocation())
-						&& StringUtils.hasText(inventory.getAliquotSite())
-						&& compoundProfile.getLocation().equalsIgnoreCase(
-								inventory.getAliquotSite())) {
-					return true;
-				} else {
-					// send available location
-				}
+			LOG.info("*********************************************************");
+			LOG.info("compoundProfile.getLocation() - "
+					+ compoundProfile.getLocation());
+			LOG.info("inventory.getAliquotSite() -"
+					+ inventory.getAliquotSite());
+			LOG.info("*********************************************************");
+			if (StringUtils.hasText(compoundProfile.getLocation())
+					&& StringUtils.hasText(inventory.getAliquotSite())
+					&& compoundProfile.getLocation().equalsIgnoreCase(
+							inventory.getAliquotSite())) {
+				return true;
+			} else {
+				// send available location
 			}
+
 		}
 
 		return false;
@@ -202,7 +216,7 @@ public class AssayDao {
 				inventoryViews.add(inventoryView);
 			}
 
-			LOG.info("inventoryViews Powder Size:" + inventoryViews.size());
+			LOG.debug("inventoryViews Powder Size:" + inventoryViews.size());
 
 		} catch (ClassNotFoundException e) {
 			LOG.error("Error : ", e);
@@ -224,20 +238,70 @@ public class AssayDao {
 		}
 
 		for (InventoryView inventory : inventoryViews) {
-			if (compoundProfile.getOutlineQueueId().equalsIgnoreCase(
-					inventory.getRootNumber())) {
-				if (StringUtils.hasText(compoundProfile.getLocation())
-						&& StringUtils.hasText(inventory.getAliquotSite())
-						&& compoundProfile.getLocation().equalsIgnoreCase(
-								inventory.getAliquotSite())) {
-					return true;
-				} else {
-					// send available location
-				}
+			LOG.debug("*********************************************************");
+			LOG.debug("compoundProfile.getLocation() - "
+					+ compoundProfile.getLocation());
+			LOG.debug("inventory.getAliquotSite() -"
+					+ inventory.getAliquotSite());
+			LOG.debug("*********************************************************");
+			if (StringUtils.hasText(compoundProfile.getLocation())
+					&& StringUtils.hasText(inventory.getAliquotSite())
+					&& compoundProfile.getLocation().equalsIgnoreCase(
+							inventory.getAliquotSite())) {
+				return true;
+			} else {
+				// send available location
 			}
+
 		}
 
 		return false;
+	}
+
+	/**
+	 * 
+	 * @param queueItemId
+	 * @return
+	 * @throws SQLException
+	 */
+	private String getBestLotNumber(String queueItemId) throws SQLException {
+		String bestLotNumber = null;
+		Connection ct = null;
+		Statement st = null;
+		ResultSet rs = null;
+		try {
+			ct = connectionUtil.createConnection();
+			st = ct.createStatement();
+			String query = "select BEST_LOT_NUMBER from mars.QUEUE_ITEM_BEST_LOTS where QUEUE_ITEM_ID='"
+					+ queueItemId + "'";
+
+			LOG.info("getBestLotNumber Query-" + query);
+			rs = st.executeQuery(query);
+
+			while (rs.next()) {
+
+				bestLotNumber = rs.getString("BEST_LOT_NUMBER");
+
+			}
+
+			LOG.debug("BestLotNumber :" + bestLotNumber);
+
+		} catch (ClassNotFoundException e) {
+			LOG.error("Error : ", e);
+		} catch (FileNotFoundException e) {
+			LOG.error("Error : ", e);
+		} catch (SQLException e) {
+			LOG.error("Error : ", e);
+		} finally {
+			if (rs != null)
+				rs.close();
+			if (st != null)
+				st.close();
+			if (ct != null)
+				ct.close();
+		}
+
+		return bestLotNumber;
 	}
 
 	/**
@@ -251,8 +315,11 @@ public class AssayDao {
 		long startTime = System.currentTimeMillis();
 		List<CompoundProfile> compoundProfiles = getCompoundProfile();
 		if (!CollectionUtils.isEmpty(compoundProfiles)) {
-			List<CompoundProfile> liquidStack = new ArrayList<CompoundProfile>();
-			List<CompoundProfile> powderStack = new ArrayList<CompoundProfile>();
+			List<CompoundProfile> liquidMissingStack = new ArrayList<CompoundProfile>();
+			List<CompoundProfile> powderMissingStack = new ArrayList<CompoundProfile>();
+			List<CompoundProfile> liquidPresentStack = new ArrayList<CompoundProfile>();
+			List<CompoundProfile> powderPresentStack = new ArrayList<CompoundProfile>();
+			List<CompoundProfile> missingVolumeStack = new ArrayList<CompoundProfile>();
 
 			for (CompoundProfile compoundProfile : compoundProfiles) {
 				if (compoundProfile != null) {
@@ -265,14 +332,29 @@ public class AssayDao {
 							LOG.debug("Checking liquid" + compoundProfile);
 						// Liquid
 						boolean exists = false;
-						if (StringUtils.hasText(compoundProfile.getLotNumber()))
+						if (StringUtils.hasText(compoundProfile.getLotNumber())) {
 							exists = checkAliquotSiteForLiquid(compoundProfile);
+						} else {
+							// Retrieve the best_lot_number from
+							// queue_item_best_lot
+							// when queue_item_best_lot.queue_item_id =
+							// queue_items.id
+
+							String bestLotNumber = getBestLotNumber(compoundProfile
+									.getId());
+							if (StringUtils.hasText(bestLotNumber)) {
+								compoundProfile.setLotNumber(bestLotNumber);
+								exists = checkAliquotSiteForLiquid(compoundProfile);
+							}
+						}
 
 						if (!exists) {
 							// Write to file
 							// CompoundProfileWriter.writeToFile(compoundProfile,
 							// false);
-							liquidStack.add(compoundProfile);
+							liquidMissingStack.add(compoundProfile);
+						} else {
+							liquidPresentStack.add(compoundProfile);
 						}
 
 					} else if (StringUtils.hasText(compoundProfile.getVolume())) {
@@ -280,28 +362,66 @@ public class AssayDao {
 							LOG.debug("Checking powder " + compoundProfile);
 						// Powder
 						boolean exists = false;
-						if (StringUtils.hasText(compoundProfile.getLotNumber()))
+						if (StringUtils.hasText(compoundProfile.getLotNumber())) {
 							exists = checkAliquotSiteForPowder(compoundProfile);
+						} else {
+							// Retrieve the best_lot_number from
+							// queue_item_best_lot
+							// when queue_item_best_lot.queue_item_id =
+							// queue_items.id
+
+							String bestLotNumber = getBestLotNumber(compoundProfile
+									.getId());
+							if (StringUtils.hasText(bestLotNumber)) {
+								compoundProfile.setLotNumber(bestLotNumber);
+								exists = checkAliquotSiteForPowder(compoundProfile);
+							}
+						}
 
 						if (!exists) {
 							// Write to file
 							// CompoundProfileWriter.writeToFile(compoundProfile,
 							// true);
-							powderStack.add(compoundProfile);
+							powderMissingStack.add(compoundProfile);
+						} else {
+							powderPresentStack.add(compoundProfile);
 						}
+					} else {
+						missingVolumeStack.add(compoundProfile);
 					}
 				}
 			}
 
-			CompoundProfileWriter.writeToFile(liquidStack, false);
+			LOG.info("LiquidMissing - " + liquidMissingStack.size());
+			LOG.info("PowderMissing - " + powderMissingStack.size());
+			LOG.info("LiquidMatching - " + liquidPresentStack.size());
+			LOG.info("PowderMatching - " + powderPresentStack.size());
+			LOG.info("Volume Null - " + missingVolumeStack.size());
 
-			CompoundProfileWriter.writeToFile(liquidStack, true);
+			CompoundProfileWriter.writeToFile(liquidMissingStack,
+					"LiquidCompoundUnmatchedLocation.txt");
+
+			CompoundProfileWriter.writeToFile(powderMissingStack,
+					"PowderCompoundUnmatchedLocation.txt");
+
+			CompoundProfileWriter.writeToFile(liquidPresentStack,
+					"LiquidCompoundMatchedLocation.txt");
+
+			CompoundProfileWriter.writeToFile(powderPresentStack,
+					"PowderCompoundMatchedLocation.txt");
+			CompoundProfileWriter.writeToFile(missingVolumeStack,
+					"MissingVolumeCompounds.txt");
 		}
 		long endTime = System.currentTimeMillis();
 		LOG.info("End checkAliquotSite .. Time Consumed - "
 				+ (endTime - startTime) / 1000 + "s");
 	}
 
+	/**
+	 * 
+	 * @param args
+	 * @throws Exception
+	 */
 	public static void main(String args[]) throws Exception {
 		/**
 		 * 1. Get the Compound using id, stateId, stockOnHand and transferStatus
